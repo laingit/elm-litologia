@@ -2,26 +2,13 @@ module Main exposing (..)
 
 import Html exposing (..)
 import Html.Attributes exposing (..)
+import Http exposing (..)
 import Json.Decode exposing (..)
 import Json.Decode.Pipeline exposing (..)
-import LegendaUno
 
 
+-- import LegendaUno
 -- MODEL
-
-
-test : List ItemLegenda
-test =
-    [ { liv_2 = "a", liv_2_desc = "prova", rgb = "#ff0000" }
-    , { liv_2 = "b", liv_2_desc = "prova", rgb = "#ff0000" }
-    ]
-
-
-my_error : List ItemLegenda
-my_error =
-    [ { liv_2 = "e1", liv_2_desc = "prova", rgb = "#ff0000" }
-    , { liv_2 = "e2", liv_2_desc = "prova", rgb = "#ff0000" }
-    ]
 
 
 itemLegendaDecoder : Decoder ItemLegenda
@@ -52,16 +39,24 @@ decodeLegenda json =
             []
 
 
-model : Model
-model =
+
+-- decodeLegenda LegendaUno.json
+
+
+initialModel : Model
+initialModel =
     { nome = "Legenda livello 1(uno)"
-    , legenda = decodeLegenda LegendaUno.json
+    , liv_due = "liv_due"
+    , legenda = []
+    , errorMessage = Nothing
     }
 
 
 type alias Model =
     { nome : String
+    , liv_due : String
     , legenda : List ItemLegenda
+    , errorMessage : Maybe String
     }
 
 
@@ -78,6 +73,7 @@ type alias ItemLegenda =
 
 type Msg
     = DoNothing
+    | HandleLegendaResponse (Result Http.Error (List ItemLegenda))
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -86,11 +82,25 @@ update msg model =
         DoNothing ->
             ( model, Cmd.none )
 
+        HandleLegendaResponse result ->
+            case result of
+                Ok results ->
+                    ( { model | legenda = results, errorMessage = Nothing }, Cmd.none )
+
+                Err error ->
+                    case error of
+                        Http.BadPayload errorMessage _ ->
+                            ( { model | errorMessage = Just errorMessage }, Cmd.none )
+
+                        _ ->
+                            ( model, Cmd.none )
+
 
 
 -- VIEW
 
 
+(=>) : a -> b -> ( a, b )
 (=>) =
     (,)
 
@@ -100,35 +110,65 @@ px number =
     toString number ++ "px"
 
 
-view : Model -> Html Msg
-view model =
-    ul []
+viewLegenda : Model -> Html msg
+viewLegenda model =
+    ul [ style [ "list-style-type" => "none" ] ]
         (List.map
             (\item ->
                 div
                     [ style
-                        [ "background-color" => item.rgb
-                        , "width" => "auto"
-                        , "height" => "20px"
-                        , "border-radius" => "4px"
+                        [ "min-height" => "80px"
+                        , "width" => "1000px"
                         , "color" => "black"
-                        , "display" => "flex"
+                        , "font-size" => "15px"
                         ]
+                    , class "row"
                     ]
                     [ li
                         []
-                        [ text item.liv_2, text " - ", text item.liv_2_desc ]
+                        [ div []
+                            [ div
+                                [ style
+                                    [ "background-color" => item.rgb
+                                    , "color" => "black"
+                                    , "width" => "50px"
+                                    , "padding" => "2px"
+                                    , "border-style" => "solid"
+                                    , "border-width" => "0.1px"
+                                    ]
+                                , class "col-md-4"
+                                ]
+                                [ text item.liv_2 ]
+                            ]
+                        , div [ class "col-md-8" ] [ text item.liv_2_desc ]
+                        ]
                     ]
             )
             model.legenda
         )
 
 
+view : Model -> Html msg
+view model =
+    div [] [ text <| Maybe.withDefault "OK" model.errorMessage, viewLegenda model ]
+
+
 main : Program Never Model Msg
 main =
     Html.program
-        { init = ( model, Cmd.none )
+        { init = ( initialModel, richiestaWebLegenda initialModel.liv_due )
         , view = view
-        , subscriptions = always Sub.none
+        , subscriptions = \_ -> Sub.none
         , update = update
         }
+
+
+richiestaWebLegenda : String -> Cmd Msg
+richiestaWebLegenda query =
+    let
+        url =
+            "http://192.168.18.41:4000/api/"
+                ++ query
+    in
+    Http.get url legendaDecoder
+        |> Http.send HandleLegendaResponse
